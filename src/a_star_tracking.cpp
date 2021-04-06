@@ -381,15 +381,12 @@ void A_star_algorithm()
     int cur_x, cur_y;   // for picking x.
     
     while(!Open_list.empty()){
-        // cout<<"Open list: \n";
-        // for(auto &item: Open_list)
-        //     cout<<item.x<<", "<<item.y<<"\n";
+
         // x: pick the node with min f_cost.
         float min_f = 100;
         for (itr = Open_list.begin(); itr != Open_list.end(); itr++)
         {
             int id = *itr;
-            // if( f_cost[id] < min_f){
             if( f_cost[id] < min_f){
                 min_f = f_cost[id];
                 cur_x = ID_to_X(id);
@@ -411,21 +408,11 @@ void A_star_algorithm()
             break; // break from while loop
         }
 
-        auto it = Open_list.find(chosen_loc.id);
-        Open_list.erase(it);
+        // auto it = Open_list.find(chosen_loc.id);
+        Open_list.erase(chosen_loc.id);
         // ROS_INFO("Move (%d,%d) {data[%d]} from Open-list to Closed-list!", chosen_loc.x, chosen_loc.y, chosen_loc.id);
         Closed_list.insert(chosen_loc.id);
-
         // cout<<"Openlist: "<<Open_list.size()<<" elements, Closed-list: "<<Closed_list.size()<<endl;
-
-        // for(auto &ele:Open_list)
-        //     cout<<ele<<" ";
-        // cout<<endl;
-
-
-        // for(auto &ele:Closed_list)
-        //     cout<<ele<<" ";
-        // cout<<endl;
 
         int neighbor_x, neighbor_y;
         
@@ -480,8 +467,6 @@ void A_star_algorithm()
             if(neighbor.id >= 10000 || neighbor.id <0){
                 ROS_INFO("Sementation Fault! Index out of range.");
             }
-
-            
             if(env_map[neighbor.id] == 100 || env_map[neighbor.id]==-1){
                 // NOT walkable. 
                 ROS_INFO("Cannot walk this way since it's occupied! Index: %d",index);
@@ -497,11 +482,9 @@ void A_star_algorithm()
             float gt = g_cost[neighbor.id] + dist(chosen_loc , neighbor);
             // cout<<"gt : "<<gt<<" = g["<<neighbor.id<<"] "<<g_cost[neighbor.id]<<" + dist: "<<dist(chosen_loc , neighbor)<<endl;
             bool change_parent = false; // default
-            
-        
-        
+                   
             // check whether to change y's parent -> x.
-            if(  Open_list.find(neighbor.id) == Open_list.end()){
+            if( Open_list.find(neighbor.id) == Open_list.end()){
                 Open_list.insert(neighbor.id);
                 change_parent = true;
             }
@@ -511,9 +494,6 @@ void A_star_algorithm()
             /*  =========================== */
             
             if(change_parent){
-                // neighbor.parent = chosen_loc.id;
-                // neighbor.g = gt;
-                // neighbor.f = neighbor.g + h(neighbor, goal);
                 Parent[neighbor.id] = chosen_loc.id;
                 g_cost[neighbor.id] = gt;
                 f_cost[neighbor.id] = g_cost[neighbor.id] + h(neighbor, goal);
@@ -627,7 +607,7 @@ int main(int argc, char **argv)
     ros::Publisher cmd_vel_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
     ros::Subscriber robot_pose_sub = node.subscribe("/robot_pose", 10, Robot_Pose_Callback);
     ros::Subscriber goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, Goal_Pose_Callback);
-    ros::Subscriber map_sub = node.subscribe("map", 100, Map_Callback);
+    ros::Subscriber map_sub = node.subscribe("map", 10, Map_Callback);
 
     // Set the publish rate here
     ros::Rate rate(100);
@@ -661,6 +641,8 @@ int main(int argc, char **argv)
         break;
         case Finished:
             // return 0;
+
+            free(env_map);
         #ifdef DEBUG_PROGRAM
                     ROS_INFO("Program ended.");
         #endif
@@ -670,4 +652,5 @@ int main(int argc, char **argv)
         ros::spinOnce(); // Allow processing of incoming messages
         rate.sleep();
     }
+
 }
