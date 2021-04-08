@@ -4,12 +4,16 @@
 #include "nav_msgs/OccupancyGrid.h"
 
 #include <iostream>
+#include <fstream>
 #include <cmath>
-// #include <set>
+#include <set>
 #include<vector>
 using namespace std;
 
 // #define DEBUG_LAB2
+#define DEBUG_PROGRAM
+// #define DEBUG_MAP
+// #define DEBUG_OBSTACLE
 
 /*
     Publish:
@@ -50,7 +54,14 @@ ros::Subscriber map_sub;
 
 const float pi = 3.14159265358979323846;
 
-
+/* 
+0: A_star_planning
+1: Tracking
+2: Finished
+3: MOVING
+4: TURNING
+5: IDLE
+*/
 enum State
 {
     A_star_planning,
@@ -61,7 +72,7 @@ enum State
     IDLE
 };
 State program_state = A_star_planning; //Initial turtle state/pose.
-State robot_state = IDLE;              //Initial turtle state/pose.
+State robot_state = MOVING;              //Initial turtle state/pose.
 
 float rho, alpha, beta;
 float goal_x = 0;
@@ -196,29 +207,167 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 #define HEIGHT 100
 #define NUM_NEIGHBORS 8
 
-int *env_map;
+/* ---- Goal locations ----- */
+#define NUM_OF_GOALS 4
+
+
+// #define TEST_SMALL_GOAL
+
+#ifdef TEST_SMALL_GOAL
+const int goals[4][2] =
+    {
+        {3, 4},
+        {3, -2},
+        {-4, -3},
+        {-4, 4}};
+#else
+const int goals[4][2] =
+    {
+        {30, 40},
+        {30, -20},
+        {-40, -30},
+        {-40, 40}};
+#endif
+
+
+
+
+
+
+
+
+bool read_map = false;
+int env_map[10000];
+
+// For visualization
+char path_map[10000];
+
 // Note: this ONLY run ONE TIME !
 void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
 {
-    ROS_INFO("I get msg from map!!! Hehehaha Tony Chiu!");
-    // env_map = msg->data;
-    
+    if(!read_map){
+            ROS_INFO("I get msg from map!!! Hehehaha Tony Chiu!");
+            for (int i = 0; i < WIDTH; i++)
+            {
+                for (int j = 0; j < HEIGHT; j++)
+                {
+                    env_map[i + j*WIDTH] = msg->data[i + j*WIDTH];
+                    if(env_map[i+j*WIDTH] == 100){
+                        path_map[i+j*WIDTH] = '#';                    
+                    }
+                    else if(env_map[i+j*WIDTH] == 0)
+                        path_map[i+j*WIDTH] = ' ';
+                    else
+                        path_map[i+j*WIDTH] = '-'; // -1
 
-    for (int i = 0; i < WIDTH; i++)
-    {
-        for (int j = 0; j < HEIGHT; j++)
+        // #ifdef DEBUG_MAP
+        //             printf("%d ", msg->data[i * WIDTH + j]);
+        // #endif
+                }
+        // #ifdef DEBUG_MAP
+        //         printf("\n");
+        // #endif
+        
+            }
+         
+        // First Step: Expand (Note: use 50, otherwise, the world block since we use a for-loop!)
+        for (int i = 0; i < HEIGHT * WIDTH; i++)
         {
-            env_map[i + j*WIDTH] = msg->data[i + j*WIDTH];
+            // printf("Data[%d][%d]: %d\n", i % WIDTH, i / WIDTH, env_map[i]);    
+            // Expand obstacle:
+                if(env_map[i] == 100){
+                    // cout<<"expand index: "<<i<<"\n";
+                    int x = i%WIDTH;
+                    int y = i/WIDTH;
+                    
+                    if(x+3<100){
+                        env_map[(x+3)+y*WIDTH] = 50;
+                        path_map[(x+3)+y*WIDTH] = '#';                        
+                    }
+                    if(x-3 >=0){
+                        env_map[(x-3)+y*WIDTH] = 50;
+                        path_map[(x-3)+y*WIDTH] = '#';
+                    }
 
-#ifdef DEBUG_MAP
-            printf("%d ", msg->data[i * WIDTH + j]);
-#endif
+                    if(x+2<100){
+                        env_map[(x+2)+y*WIDTH] = 50;
+                        path_map[(x+2)+y*WIDTH] = '#';                        
+                    }
+                    if(x-3 >=0){
+                        env_map[(x-2)+y*WIDTH] = 50;
+                        path_map[(x-2)+y*WIDTH] = '#';
+                    }
+
+                    if(x-1 >=0){
+                        env_map[(x-1)+y*WIDTH] = 50;
+                        path_map[(x-1)+y*WIDTH] = '#';
+                    }
+                    if(x+1 <100){
+                        env_map[(x+1)+y*WIDTH] = 50;
+                        path_map[(x+1)+y*WIDTH] = '#';
+                    }
+                    if(y-1 >=0 ){
+                        env_map[(x)+(y-1)*WIDTH] = 50;
+                        path_map[x+ (y-1)*WIDTH] = '#';                        
+                    }
+                    if(y+1 <100){
+                        env_map[(x)+(y+1)*WIDTH] = 50;
+                        path_map[x+ (y+1)*WIDTH] = '#';
+                    }
+                    // Diagonal.
+                    if( x-1 >=0 && y-1 >=0 ){
+                        env_map[(x-1)+(y-1)*WIDTH] = 50;                        
+                        path_map[(x-1)+(y-1)*WIDTH] = '#';
+                    }
+                    if( x+1 <100 && y-1 >=0){
+                        env_map[(x+1)+(y-1)*WIDTH] = 50;
+                        path_map[(x+1)+(y-1)*WIDTH] = '#';
+                    }
+                    if( x-1 >=0 && y+1 < 100){
+                        env_map[(x-1)+(y+1)*WIDTH] = 50;                           
+                        path_map[(x-1)+(y+1)*WIDTH] = '#';
+                    }
+                    if( x+1 <100 && y+1 <100){
+                        env_map[(x+1)+(y+1)*WIDTH] = 50;
+                        path_map[(x+1)+(y+1)*WIDTH] = '#';
+                    }
+
+                }
+            }
+        // Second Step: Transform 50 to 100/
+        for (int i=0; i<HEIGHT*WIDTH; i++){
+            if(env_map[i] == 50)
+                env_map[i] = 100;
+        }            
+
+            ROS_INFO("Done expanding obstacle.");
+
+
+        ofstream myfile("Expand_Obs_map.txt", ios::out | ios::binary);
+        // myfile.open("/home/catkin_ws/src/lab3_A_star/Path01.txt");
+        // myfile.open();
+        if (myfile.is_open())
+        {
+
+            for(int j=HEIGHT; j>=0; j--){
+                for(int i=0; i<WIDTH; i++){
+                    myfile<<path_map[i+j*WIDTH];
+                }
+                myfile<<endl;
+            }
+
+            // myfile << "\n Path after reaching goal "<<goals[counter][0]<<", "<<goals[counter][1]<<"\n";
+            ROS_INFO("Done writing to output file!");
+            // myfile << "This is another line.\n";
+            // for(int count = 0; count < size; count ++){
+            //     myfile << x[count] << " " ;
+            // }
+            myfile.close();
         }
-#ifdef DEBUG_MAP
-        printf("\n");
-#endif
-    }
+        else cout << "Unable to open file";
 
+            read_map = true;
+        }
 #ifdef DEBUG_MAP
     for (int i = 0; i < HEIGHT * WIDTH; i++)
     {
@@ -245,21 +394,6 @@ const float Ka = 8;
 const float Kb = -1.5;
 const float Kp = 0.5;
 
-/* ---- Goal locations ----- */
-#define NUM_OF_GOALS 4
-// const int goals[4][2] =
-//     {
-//         {3, 4},
-//         {3, -2},
-//         {-4, -3},
-//         {-4, 4}};
-
-const int goals[4][2] =
-    {
-        {30, 20},
-        {30, -20},
-        {-40, -30},
-        {-40, 40}};
 
 int counter = 0; // indicate "which goal" we are planning
                 // Initial goal: goals[0]
@@ -314,7 +448,7 @@ public:
 };
 
 
-list<location> Path; // Path.push_back(location)
+vector<location> Path; // Path.push_back(location)
 
 float dist(location a, location b){
     return abs(sqrt(pow((b.x - a.x) ,2) + pow((b.y - a.y) ,2)));
@@ -328,12 +462,14 @@ void Append_Path(int node_id){
     // Append node_id in front of Path.
     int x = ID_to_X(node_id);
     int y = ID_to_Y(node_id);
-    Path.push_front(location(x,y));
+    Path.insert(Path.begin(), location(x,y));
     return;
 }
 
 
-
+int Parent[10000];
+float f_cost[10000];
+float g_cost[10000];
 
 void A_star_algorithm()
 {
@@ -347,12 +483,13 @@ void A_star_algorithm()
     // set<location> Open_list;
     // set<location> Closed_list;
 
-    int *Parent = new int(HEIGHT*WIDTH);
-    float *f_cost = new float(WIDTH*HEIGHT);
-    float *g_cost = new float(WIDTH*HEIGHT);
+    // int *Parent = new int(HEIGHT*WIDTH);
+    // float *f_cost = new float(WIDTH*HEIGHT);
+    // float *g_cost = new float(WIDTH*HEIGHT);
 
-    // memset(f_cost, 0, sizeof(f_cost));
-    // memset(g_cost, 0, sizeof(g_cost));
+    memset(Parent, 0, sizeof(Parent));
+    memset(f_cost, 0, sizeof(f_cost));
+    memset(g_cost, 0, sizeof(g_cost));
 
     // for(int i=0; i< HEIGHT*WIDTH; i++){
     //     g_cost[i] = 0;
@@ -469,7 +606,9 @@ void A_star_algorithm()
             }
             if(env_map[neighbor.id] == 100 || env_map[neighbor.id]==-1){
                 // NOT walkable. 
+                #ifdef DEBUG_OBSTACLE
                 ROS_INFO("Cannot walk this way since it's occupied! Index: %d",index);
+                #endif
                 continue;
             }
 
@@ -499,24 +638,60 @@ void A_star_algorithm()
                 f_cost[neighbor.id] = g_cost[neighbor.id] + h(neighbor, goal);
             }
             
-        } // end for-each neighbor
-        
-    
+        } // end for-each neighbor    
     }    // end  while (!Openlist.empty())
 
     if(Path.empty()){
         ROS_INFO("Fails to find a path!");
     }
     else{
+        // #ifdef DEBUG_PATH
         for(auto &element: Path){
-            cout<<"Loc: ("<<element.x<<", "<< element.y <<")\n";
+            path_map[element.id] = '$';
+            // cout<<"Loc: ("<<element.x<<", "<< element.y <<")\n";
         }
+
+        // for(int j=0; j<HEIGHT; j++){
+        //     for(int i=0; i<WIDTH; i++){
+        //         cout<<path_map[i+j*WIDTH]<<" ";
+        //     }
+        //     cout<<endl;
+        // }
+        ROS_INFO("Start writing to output file!");
+
+
+        
+        ofstream myfile("Path01.txt", ios::out | ios::binary);
+        // myfile.open("/home/catkin_ws/src/lab3_A_star/Path01.txt");
+        // myfile.open();
+        if (myfile.is_open())
+        {
+
+            for(int j=HEIGHT; j>=0; j--){
+                for(int i=0; i<WIDTH; i++){
+                    myfile<<path_map[i+j*WIDTH];
+                }
+                myfile<<endl;
+            }
+
+            myfile << "\n Path after reaching goal "<<goals[counter][0]<<", "<<goals[counter][1]<<"\n";
+            ROS_INFO("Done writing to output file!");
+            // myfile << "This is another line.\n";
+            // for(int count = 0; count < size; count ++){
+            //     myfile << x[count] << " " ;
+            // }
+            myfile.close();
+        }
+        else cout << "Unable to open file";
+
+        // #endif
     }
 
 
-    free(Parent);
-    free(f_cost);
-    free(g_cost);
+    // free(Parent);
+    // free(f_cost);
+    // free(g_cost);
+    // ROS_INFO("Free memory here!");
     
 }
 
@@ -525,76 +700,83 @@ geometry_msgs::Twist twist;
 
 void Tracking()
 {
+    // stuck in here!
+    while(1){
 
-    error_x = goal_x - robot_x;
-    error_y = goal_y - robot_y;
-    error_theta = goal_theta - robot_theta;
+            error_x = goal_x - robot_x;
+            error_y = goal_y - robot_y;
+            error_theta = goal_theta - robot_theta;
 
-#ifdef DEBUG_LAB2
-    ROS_INFO("State: %d, Goal theta: %.2f, Robot Theta: %.2f", state, goal_theta, robot_theta);
-    ROS_INFO("Error: %.3f %.3f %.3f", error_x, error_y, error_theta);
-#endif
+        #ifdef DEBUG_LAB2
+            ROS_INFO("Robot-State: %d, Goal theta: %.2f, Robot Theta: %.2f", robot_state, goal_theta, robot_theta);
+            ROS_INFO("Error: %.3f %.3f %.3f", error_x, error_y, error_theta);
+        #endif
 
-    switch (robot_state)
-    {
-    case MOVING:
-        ////////// Main Control Loop! /////////////
-        if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
-        {
-            robot_state = IDLE;
-        }
-        else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-        {
-            robot_state = TURNING;
-        }
-        else
-        {
-            /* --- Control Law --- */
-            v = Krho * rho;
-            w = Ka * alpha + Kb * beta;
-            // ROS_INFO("Robot is MOVING !!!");
-        }
-        break;
-    case TURNING:
+            switch (robot_state)
+            {
+            case MOVING:
+                ////////// Main Control Loop! /////////////
+                if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
+                {
+                    robot_state = IDLE;
+                }
+                else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                {
+                    robot_state = TURNING;
+                }
+                else
+                {
+                    /* --- Control Law --- */
+                    v = Krho * rho;
+                    w = Ka * alpha + Kb * beta;
+                    // ROS_INFO("Robot is MOVING !!!");
+                }
+                break;
+            case TURNING:
 
-        if (abs(error_theta) < 0.1 || abs(robot_theta + 2 * pi) < 0.1 || abs(error_theta - 2 * pi) < 0.1)
-        {
-            robot_state = IDLE;
-        }
-        else
-        {
-            /* --- Control Law --- */
-            v = 0;
-            w = Kp * error_theta;
-        }
+                if (abs(error_theta) < 0.1 || abs(robot_theta + 2 * pi) < 0.1 || abs(error_theta - 2 * pi) < 0.1)
+                {
+                    robot_state = IDLE;
+                }
+                else
+                {
+                    /* --- Control Law --- */
+                    v = 0;
+                    w = Kp * error_theta;
+                }
 
-        break;
-    case IDLE:
-        // Stop and listen to new goal.
-        // reset error signals.
-        v = 0;
-        w = 0;
-#ifdef DEBUG_LAB2
-        ROS_INFO("Robot reached the goal and is now IDLE.");
-#endif
+                break;
+            case IDLE:
+                // Stop and listen to new goal.
+                // reset error signals.
+                v = 0;
+                w = 0;
+                break;  // break while-loop and return to the main function!
+        #ifdef DEBUG_LAB2
+                ROS_INFO("Robot reached the goal and is now IDLE.");
+        #endif
 
-        break;
+                break;
+            }
+
+            /* Command Inputs Constraints */
+            v = (v>max_v)? max_v : v;
+            v = (v<-max_v)?-max_v: v;
+            w = (w>max_w)? max_w : w;
+            w = (w<-max_w)?-max_w: w;
+
+            // Publish cmd_vel
+            twist.linear.x = v;
+            twist.linear.y = 0;
+            twist.linear.z = 0;
+            twist.angular.x = 0;
+            twist.angular.y = 0;
+            twist.angular.z = w;
+            cmd_vel_pub.publish(twist);
+
+            ros::spinOnce();
+
     }
-
-    /* Command Inputs Constraints */
-    v = (v>max_v)? max_v : v;
-    v = (v<-max_v)?-max_v: v;
-    w = (w>max_w)? max_w : w;
-    w = (w<-max_w)?-max_w: w;
-
-    // Publish cmd_vel
-    twist.linear.x = v;
-    twist.linear.y = 0;
-    twist.linear.z = 0;
-    twist.angular.x = 0;
-    twist.angular.y = 0;
-    twist.angular.z = w;
-    cmd_vel_pub.publish(twist);
 
 }
 
@@ -604,53 +786,68 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "a_star_tracking");
     ros::NodeHandle node;
 
-    ros::Publisher cmd_vel_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
-    ros::Subscriber robot_pose_sub = node.subscribe("/robot_pose", 10, Robot_Pose_Callback);
-    ros::Subscriber goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, Goal_Pose_Callback);
-    ros::Subscriber map_sub = node.subscribe("map", 10, Map_Callback);
+    cmd_vel_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+    robot_pose_sub = node.subscribe("/robot_pose", 10, Robot_Pose_Callback);
+    // goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, Goal_Pose_Callback);
+    map_sub = node.subscribe("map", 1, Map_Callback);
 
     // Set the publish rate here
-    ros::Rate rate(100);
-    
-    env_map = new int(HEIGHT*WIDTH);
+    ros::Rate rate(10);
 
     // Main Control Loop.
+    // Initialize map container (1-D array)
+    // env_map = new int(HEIGHT*WIDTH);
+    
+    ROS_INFO("Test initialization.");
 
     // After receive a new goal: keep localization task.
     while (ros::ok())
-    {
-        switch (program_state)
-        {
-        case A_star_planning:
-          
-            A_star_algorithm();
-            program_state = Finished;
-            ROS_INFO("Finish lab3! ^_^ !");
-            // program_state = Tracking_state;
-        break;
-        case Tracking_state:
-            Tracking();
-            if(counter< NUM_OF_GOALS){
+    {   
+        // After reading map
+        if(read_map){
+        // ROS_INFO("while-loop: %d", counter++);
+
+        // #ifdef DEBUG_PRORAM    
+            switch (program_state)
+            {
+            case A_star_planning:
+            
+                A_star_algorithm();
+                // Save path to .txt
                 counter++;
-                program_state = A_star_planning;
-            }
-            else{
-                program_state = Finished;
-                ROS_INFO("Finish lab3! ^_^ !");
-            }
-        break;
-        case Finished:
-            // return 0;
+                program_state = Tracking_state;
+            break;
+            case Tracking_state:
+                // Now, pass Path (element.x, element.y) to A series of Control Problem!
+                for(int i=2; i<Path.size(); i+=3){
+                    goal_x = Path[i].x;
+                    goal_y = Path[i].y;
+                    goal_theta = 0; // TODO: Don't know orientation! XD
+                    Tracking();
+                }
+                ROS_INFO("Reach Goal: (%d,%d)",goals[counter-1][0],goals[counter-1][1]);
+                // After reached this point.      
+                if(counter< NUM_OF_GOALS){
+                    program_state = A_star_planning;
+                }
+                else{
+                    program_state = Finished;
+                    ROS_INFO("Finish lab3! ^_^ !");
+                }
+            break;
+            case Finished:
 
-            free(env_map);
-        #ifdef DEBUG_PROGRAM
-                    ROS_INFO("Program ended.");
-        #endif
-        break;
+                // free(env_map);
+            #ifdef DEBUG_PROGRAM
+                        ROS_INFO("Program ended.");
+            #endif
+                return 0;
+            break;
+            }
         }
-
+        
+        // #endif
         ros::spinOnce(); // Allow processing of incoming messages
         rate.sleep();
     }
-
 }
