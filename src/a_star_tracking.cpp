@@ -5,18 +5,22 @@
 
 #include <iostream>
 #include <fstream>
+#include <cstring>
 #include <cmath>
 #include <set>
 #include<vector>
 using namespace std;
 
-// #define DEBUG_LAB2
+#define DEBUG_LAB2
 #define DEBUG_PROGRAM
+
+
+#define MANHATTAN_DISTANCE
 // #define DEBUG_MAP
 // #define DEBUG_OBSTACLE
 
 /*
-    Publish:
+    Publish:f
         /cmd_vel
             geometry_msgs/Twist.msg
             - Vector3 linear (x, y, z)
@@ -232,9 +236,10 @@ const int goals[4][2] =
 
 
 
-
-
-
+// const int EXPAND_NUMBER = 2;
+#define EXPAND_NUMBER 6 // Expand to 4 grids. 40cm
+string Pathname;
+string Envname;
 
 bool read_map = false;
 int env_map[10000];
@@ -259,15 +264,7 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
                         path_map[i+j*WIDTH] = ' ';
                     else
                         path_map[i+j*WIDTH] = '-'; // -1
-
-        // #ifdef DEBUG_MAP
-        //             printf("%d ", msg->data[i * WIDTH + j]);
-        // #endif
-                }
-        // #ifdef DEBUG_MAP
-        //         printf("\n");
-        // #endif
-        
+                } 
             }
          
         // First Step: Expand (Note: use 50, otherwise, the world block since we use a for-loop!)
@@ -280,58 +277,91 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
                     int x = i%WIDTH;
                     int y = i/WIDTH;
                     
-                    if(x+3<100){
-                        env_map[(x+3)+y*WIDTH] = 50;
-                        path_map[(x+3)+y*WIDTH] = '#';                        
-                    }
-                    if(x-3 >=0){
-                        env_map[(x-3)+y*WIDTH] = 50;
-                        path_map[(x-3)+y*WIDTH] = '#';
-                    }
+                    for(int k=1; k<=EXPAND_NUMBER; k++){
 
-                    if(x+2<100){
-                        env_map[(x+2)+y*WIDTH] = 50;
-                        path_map[(x+2)+y*WIDTH] = '#';                        
-                    }
-                    if(x-3 >=0){
-                        env_map[(x-2)+y*WIDTH] = 50;
-                        path_map[(x-2)+y*WIDTH] = '#';
-                    }
+                        if(x-k >=0){
+                            env_map[(x-k)+y*WIDTH] = 50;
+                            path_map[(x-k)+y*WIDTH] = '#';
+                        }
+                        if(x+k <100){
+                            env_map[(x+k)+y*WIDTH] = 50;
+                            path_map[(x+k)+y*WIDTH] = '#';
+                        }
+                        if(y-k >=0 ){
+                            env_map[(x)+(y-k)*WIDTH] = 50;
+                            path_map[x+ (y-k)*WIDTH] = '#';                        
+                        }
+                        if(y+k <100){
+                            env_map[(x)+(y+k)*WIDTH] = 50;
+                            path_map[x+ (y+k)*WIDTH] = '#';
+                        }
+                        // Diagonal.
+                        // Left Down
+                        if( x-k >=0 && y-k >=0 ){
+                            env_map[(x-k)+(y-k)*WIDTH] = 50;                        
+                            path_map[(x-k)+(y-k)*WIDTH] = '#';
+                            // Fill to right side
+                            for(int m=0; m<EXPAND_NUMBER; m++){
+                                if( (x-k+m) <100){
+                                    env_map[(x-k+m)+(y-k)*WIDTH] = 50;                           
+                                    path_map[(x-k+m)+(y-k)*WIDTH] = '#';                                    
+                                }
+                            }
 
-                    if(x-1 >=0){
-                        env_map[(x-1)+y*WIDTH] = 50;
-                        path_map[(x-1)+y*WIDTH] = '#';
-                    }
-                    if(x+1 <100){
-                        env_map[(x+1)+y*WIDTH] = 50;
-                        path_map[(x+1)+y*WIDTH] = '#';
-                    }
-                    if(y-1 >=0 ){
-                        env_map[(x)+(y-1)*WIDTH] = 50;
-                        path_map[x+ (y-1)*WIDTH] = '#';                        
-                    }
-                    if(y+1 <100){
-                        env_map[(x)+(y+1)*WIDTH] = 50;
-                        path_map[x+ (y+1)*WIDTH] = '#';
-                    }
-                    // Diagonal.
-                    if( x-1 >=0 && y-1 >=0 ){
-                        env_map[(x-1)+(y-1)*WIDTH] = 50;                        
-                        path_map[(x-1)+(y-1)*WIDTH] = '#';
-                    }
-                    if( x+1 <100 && y-1 >=0){
-                        env_map[(x+1)+(y-1)*WIDTH] = 50;
-                        path_map[(x+1)+(y-1)*WIDTH] = '#';
-                    }
-                    if( x-1 >=0 && y+1 < 100){
-                        env_map[(x-1)+(y+1)*WIDTH] = 50;                           
-                        path_map[(x-1)+(y+1)*WIDTH] = '#';
-                    }
-                    if( x+1 <100 && y+1 <100){
-                        env_map[(x+1)+(y+1)*WIDTH] = 50;
-                        path_map[(x+1)+(y+1)*WIDTH] = '#';
-                    }
+                        }
+                        // Right Down
+                        if( x+k <100 && y-k >=0){
+                            env_map[(x+k)+(y-k)*WIDTH] = 50;
+                            path_map[(x+k)+(y-k)*WIDTH] = '#';
 
+                            // Fill to Left side
+                            for(int m=0; m<EXPAND_NUMBER; m++){
+                                if( (x+k-m) >=0){
+                                    env_map[(x+k-m)+(y-k)*WIDTH] = 50;                           
+                                    path_map[(x+k-m)+(y-k)*WIDTH] = '#';                                    
+                                }
+                            }
+
+                            
+                        }
+                        // Left Up.
+                        if( x-k >=0 && y+k < 100){
+                            env_map[(x-k)+(y+k)*WIDTH] = 50;                           
+                            path_map[(x-k)+(y+k)*WIDTH] = '#';
+                            for(int m=0; m<EXPAND_NUMBER; m++){
+                                if( (x-k+m) <100){
+                                    env_map[(x-k+m)+(y+k)*WIDTH] = 50;                           
+                                    path_map[(x-k+m)+(y+k)*WIDTH] = '#';                                    
+                                }
+                            }
+
+                        }
+                        // Right Up
+                        if( x+k <100 && y+k <100){
+                            env_map[(x+k)+(y+k)*WIDTH] = 50;
+                            path_map[(x+k)+(y+k)*WIDTH] = '#';
+
+                            // Fill to Left side
+                            for(int m=0; m<EXPAND_NUMBER; m++){
+                                if( (x+k-m) >=0){
+                                    env_map[(x+k-m)+(y+k)*WIDTH] = 50;                           
+                                    path_map[(x+k-m)+(y+k)*WIDTH] = '#';                                    
+                                }
+                            }
+
+                        }
+
+                        // Need to fill rectangle between new diagnonal & new obstacle!
+                        /*
+                            Ex.: 
+                                    #  #
+                                     # #
+                                      ##
+                                    ####    Original:   #
+                        
+                        */
+
+                    }
                 }
             }
         // Second Step: Transform 50 to 100/
@@ -343,7 +373,13 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
             ROS_INFO("Done expanding obstacle.");
 
 
-        ofstream myfile("Expand_Obs_map.txt", ios::out | ios::binary);
+        Envname = "Expand_Obs_map" + to_string(EXPAND_NUMBER) + ".txt";
+        Pathname = "Path"+ to_string(EXPAND_NUMBER)+ ".txt";
+
+        ROS_INFO("Env Name: %s",Envname.c_str());
+        // cout<<"Envname: "<<Envname<<endl;
+
+        ofstream myfile(Envname.c_str(), ios::out | ios::binary);
         // myfile.open("/home/catkin_ws/src/lab3_A_star/Path01.txt");
         // myfile.open();
         if (myfile.is_open())
@@ -351,6 +387,7 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
 
             for(int j=HEIGHT; j>=0; j--){
                 for(int i=0; i<WIDTH; i++){
+                 
                     myfile<<path_map[i+j*WIDTH];
                 }
                 myfile<<endl;
@@ -455,7 +492,11 @@ float dist(location a, location b){
 }
 
 float h(location a, location b){
-    return abs(sqrt(pow((b.x - a.x) ,2) + pow((b.y - a.y) ,2))); // straight line distance
+    #ifndef MANHATTAN_DISTANCE
+        return abs(sqrt(pow((b.x - a.x) ,2) + pow((b.y - a.y) ,2))); // straight line distance
+    #else
+        return abs(b.x - a.x) + abs(b.y - a.y);
+    #endif
 }
 
 void Append_Path(int node_id){
@@ -659,9 +700,8 @@ void A_star_algorithm()
         // }
         ROS_INFO("Start writing to output file!");
 
-
         
-        ofstream myfile("Path01.txt", ios::out | ios::binary);
+        ofstream myfile(Pathname.c_str(), ios::out | ios::binary);
         // myfile.open("/home/catkin_ws/src/lab3_A_star/Path01.txt");
         // myfile.open();
         if (myfile.is_open())
@@ -716,14 +756,17 @@ void Tracking()
             {
             case MOVING:
                 ////////// Main Control Loop! /////////////
-                if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
+                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
+                // {
+                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                if (abs(error_x) < 0.05 && abs(error_y) < 0.05)
                 {
                     robot_state = IDLE;
                 }
-                else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                {
-                    robot_state = TURNING;
-                }
+                // else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                // {
+                //     robot_state = TURNING;
+                // }
                 else
                 {
                     /* --- Control Law --- */
@@ -820,10 +863,14 @@ int main(int argc, char **argv)
             case Tracking_state:
                 // Now, pass Path (element.x, element.y) to A series of Control Problem!
                 for(int i=2; i<Path.size(); i+=3){
+                // for(int i=0; i<Path.size(); i++){
+                    
                     goal_x = Path[i].x;
                     goal_y = Path[i].y;
                     goal_theta = 0; // TODO: Don't know orientation! XD
-                    Tracking();
+                    ROS_INFO("Loc: (%f,%f)", goal_x, goal_y);
+                    // Tracking();
+                    
                 }
                 ROS_INFO("Reach Goal: (%d,%d)",goals[counter-1][0],goals[counter-1][1]);
                 // After reached this point.      
