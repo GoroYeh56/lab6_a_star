@@ -11,10 +11,8 @@
 #include<vector>
 using namespace std;
 
-#define DEBUG_LAB2
+// #define DEBUG_LAB2
 #define DEBUG_PROGRAM
-
-
 #define MANHATTAN_DISTANCE
 // #define DEBUG_MAP
 // #define DEBUG_OBSTACLE
@@ -230,14 +228,15 @@ const int goals[4][2] =
         {30, 40},
         {30, -20},
         {-40, -30},
-        {-40, 40}};
+        {-40, 40}
+        };
 #endif
 
 
 
 
 // const int EXPAND_NUMBER = 2;
-#define EXPAND_NUMBER 6 // Expand to 4 grids. 40cm
+#define EXPAND_NUMBER 5// Expand to 4 grids. 40cm
 string Pathname;
 string Envname;
 
@@ -276,6 +275,9 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
                     // cout<<"expand index: "<<i<<"\n";
                     int x = i%WIDTH;
                     int y = i/WIDTH;
+
+                    if(x==0 || x==99 || y==0 || y==99)
+                        continue;   // Don't expand the boundary since we might threaten the goal location!
                     
                     for(int k=1; k<=EXPAND_NUMBER; k++){
 
@@ -426,9 +428,9 @@ const float max_w = 1;   // rad/s
 // const float max_w = 2*max_v/wheel_separaton;
 
 /* -------- Gain ---------- */
-const float Krho = 2;
-const float Ka = 8;
-const float Kb = -1.5;
+const float Krho = 1;   // 2
+const float Ka = 5;     // 8
+const float Kb = -1;    // -1.5
 const float Kp = 0.5;
 
 
@@ -738,17 +740,19 @@ void A_star_algorithm()
 float v, w;
 geometry_msgs::Twist twist;
 
+bool should_break = false;
+
 void Tracking()
 {
     // stuck in here!
-    while(1){
+    while(!should_break){
 
             error_x = goal_x - robot_x;
             error_y = goal_y - robot_y;
             error_theta = goal_theta - robot_theta;
 
         #ifdef DEBUG_LAB2
-            ROS_INFO("Robot-State: %d, Goal theta: %.2f, Robot Theta: %.2f", robot_state, goal_theta, robot_theta);
+            // ROS_INFO("Robot-State: %d, Goal theta: %.2f, Robot Theta: %.2f", robot_state, goal_theta, robot_theta);
             ROS_INFO("Error: %.3f %.3f %.3f", error_x, error_y, error_theta);
         #endif
 
@@ -759,7 +763,7 @@ void Tracking()
                 // if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
                 // {
                 // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                if (abs(error_x) < 0.05 && abs(error_y) < 0.05)
+                if (abs(error_x) < 0.1 && abs(error_y) < 0.1)
                 {
                     robot_state = IDLE;
                 }
@@ -794,7 +798,8 @@ void Tracking()
                 // reset error signals.
                 v = 0;
                 w = 0;
-                break;  // break while-loop and return to the main function!
+                // ROS_INFO("Robot IDLE and break!");
+                should_break = true; // break while-loop and return to the main function!
         #ifdef DEBUG_LAB2
                 ROS_INFO("Robot reached the goal and is now IDLE.");
         #endif
@@ -818,10 +823,112 @@ void Tracking()
             cmd_vel_pub.publish(twist);
 
             ros::spinOnce();
+            // if(should_break)
+            //     break;
 
     }
 
 }
+
+
+float deg2rad( float degree){
+    return degree*pi/180;
+}
+
+void Initial_Control(float goal_x, float goal_y, float goal_theta){
+
+    // stuck in here!
+    while(!should_break){
+
+            error_x = goal_x - robot_x;
+            error_y = goal_y - robot_y;
+            error_theta = goal_theta - robot_theta;
+
+        #ifdef DEBUG_LAB2
+            // ROS_INFO("Robot-State: %d, Goal theta: %.2f, Robot Theta: %.2f", robot_state, goal_theta, robot_theta);
+            ROS_INFO("Error: %.3f %.3f %.3f", error_x, error_y, error_theta);
+        #endif
+
+            switch (robot_state)
+            {
+            case MOVING:
+                ////////// Main Control Loop! /////////////
+                if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
+                {
+                    robot_state = IDLE;
+                }
+                else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                {
+                    robot_state = TURNING;
+                }
+                else
+                {
+                    /* --- Control Law --- */
+                    v = Krho * rho;
+                    w = Ka * alpha + Kb * beta;
+                    // ROS_INFO("Robot is MOVING !!!");
+                }
+                break;
+            case TURNING:
+
+                if (abs(error_theta) < 0.1 || abs(robot_theta + 2 * pi) < 0.1 || abs(error_theta - 2 * pi) < 0.1)
+                {
+                    robot_state = IDLE;
+                }
+                else
+                {
+                    /* --- Control Law --- */
+                    v = 0;
+                    w = Kp * error_theta;
+                }
+
+                break;
+            case IDLE:
+                // Stop and listen to new goal.
+                // reset error signals.
+                v = 0;
+                w = 0;
+                // ROS_INFO("Robot IDLE and break!");
+                should_break = true; // break while-loop and return to the main function!
+        #ifdef DEBUG_LAB2
+                ROS_INFO("Robot reached the goal and is now IDLE.");
+        #endif
+
+                break;
+            }
+
+            /* Command Inputs Constraints */
+            v = (v>max_v)? max_v : v;
+            v = (v<-max_v)?-max_v: v;
+            w = (w>max_w)? max_w : w;
+            w = (w<-max_w)?-max_w: w;
+
+            // Publish cmd_vel
+            twist.linear.x = v;
+            twist.linear.y = 0;
+            twist.linear.z = 0;
+            twist.angular.x = 0;
+            twist.angular.y = 0;
+            twist.angular.z = w;
+            cmd_vel_pub.publish(twist);
+
+            ros::spinOnce();
+            // if(should_break)
+            //     break;
+
+    }
+
+
+}
+
+
+int Good_angles[5] ={
+    90,
+    -90,
+    90,
+    90,
+    90
+};
 
 int main(int argc, char **argv)
 {
@@ -837,15 +944,16 @@ int main(int argc, char **argv)
     // Set the publish rate here
     ros::Rate rate(10);
 
-    // Main Control Loop.
-    // Initialize map container (1-D array)
-    // env_map = new int(HEIGHT*WIDTH);
-    
-    ROS_INFO("Test initialization.");
 
+    // should_break = false;
+    // Initial_Control(0, 0, deg2rad(90) );
+    // ROS_INFO("Robot Done Initial Turning!");
+    error_x = error_y = error_theta = 0; //reset config.
+
+    // Main Control Loop.
     // After receive a new goal: keep localization task.
     while (ros::ok())
-    {   
+    {           
         // After reading map
         if(read_map){
         // ROS_INFO("while-loop: %d", counter++);
@@ -859,18 +967,29 @@ int main(int argc, char **argv)
                 // Save path to .txt
                 counter++;
                 program_state = Tracking_state;
+
+                /*  Initial angle control*/
+                // should_break = false;
+                // robot_state = MOVING;
+                // Initial_Control(robot_x, robot_y, deg2rad(Good_angles[counter-1]) );
+                // ROS_INFO("Done Turning to %d",Good_angles[counter-1] );
+
+                should_break = false; // For tracking state.
+                robot_state = MOVING; // Initial Robot State.
+                
             break;
             case Tracking_state:
                 // Now, pass Path (element.x, element.y) to A series of Control Problem!
-                for(int i=2; i<Path.size(); i+=3){
+                for(int i=6; i<Path.size(); i+=6){
                 // for(int i=0; i<Path.size(); i++){
                     
-                    goal_x = Path[i].x;
-                    goal_y = Path[i].y;
+                    goal_x = (float)Path[i].x/10  ; // Convert to meter unit
+                    goal_y = (float)Path[i].y/10  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
                     goal_theta = 0; // TODO: Don't know orientation! XD
                     ROS_INFO("Loc: (%f,%f)", goal_x, goal_y);
-                    // Tracking();
-                    
+                    Tracking();
+                    should_break = false; // reset flag
+                    robot_state = MOVING; // reset Robot_state
                 }
                 ROS_INFO("Reach Goal: (%d,%d)",goals[counter-1][0],goals[counter-1][1]);
                 // After reached this point.      
