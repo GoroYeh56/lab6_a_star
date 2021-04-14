@@ -1,7 +1,7 @@
 <launch>
 
-  <!-- <arg name="map_file" default="$(find simulation_env)/map/square_world.yaml"/>
-  <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)"/>  -->
+  <!-- <arg name="map_file" default="$(find simulation_env)/map/square_world.yaml"/> -->
+  <!-- <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)"/>  -->
 
   
   <node name="a_star_tracking" pkg="lab3_A_star" type="a_star_tracking_node" output="screen"/>
