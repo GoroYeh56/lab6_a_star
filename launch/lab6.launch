@@ -4,7 +4,7 @@
   <!-- <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)"/>  -->
 
   
-  <node name="a_star_tracking" pkg="lab3_A_star" type="a_star_tracking_node" output="screen"/>
+  <node name="a_star_tracking" pkg="lab6_a_star" type="lab6_a_star" output="screen"/>
  
   <include file="$(find simulation_env)/launch/A_star_map.launch" />
 

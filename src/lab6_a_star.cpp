@@ -73,7 +73,7 @@ enum State
     TURNING,
     IDLE
 };
-State program_state = A_star_planning; //Initial turtle state/pose.
+State program_state = Finished; //Initial turtle state/pose.
 State robot_state = MOVING;              //Initial turtle state/pose.
 
 float rho, alpha, beta;
@@ -192,10 +192,11 @@ void Robot_Pose_Callback(const geometry_msgs::Twist::ConstPtr &msg)
 void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
     // Once receive a command, change state!
+    program_state = A_star_planning;
     robot_state = MOVING;
     float qx, qy, qz, qw;
-    goal_x = msg->pose.position.x;
-    goal_y = msg->pose.position.y;
+    goal_x = (msg->pose.position.x)*10;
+    goal_y = (msg->pose.position.y)*10; // one grid = 10cm
 
     qx = msg->pose.orientation.x;
     qy = msg->pose.orientation.y;
@@ -216,6 +217,7 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 
 /* ---- Goal locations ----- */
 
+/*
 #ifndef SINGLE_GOAL_TEST
     #define NUM_OF_GOALS 4
     #ifdef TEST_SMALL_GOAL
@@ -242,7 +244,7 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     };
 
 #endif
-
+*/
 
 
 
@@ -573,7 +575,8 @@ void A_star_algorithm()
     set<int> Closed_list;
     set<int>::iterator itr;
 
-    location goal(goals[counter][0], goals[counter][1]);
+    // location goal(goals[counter][0], goals[counter][1]);
+    location goal(goal_x, goal_y); // subscribe from /move_base/goal
 
     ROS_INFO("Round %d, Goal: (%d,%d). id:data[%d]", counter, goal.x, goal.y, goal.id);
 
@@ -742,7 +745,7 @@ void A_star_algorithm()
                 myfile<<endl;
             }
 
-            myfile << "\n Path after reaching goal "<<goals[counter][0]<<", "<<goals[counter][1]<<"\n";
+            myfile << "\n Path after reaching goal "<<goal_x<<", "<<goal_y<<"\n";
             ROS_INFO("Done writing to output file!");
             // myfile << "This is another line.\n";
             // for(int count = 0; count < size; count ++){
@@ -964,7 +967,7 @@ int main(int argc, char **argv)
 
     cmd_vel_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
     robot_pose_sub = node.subscribe("/robot_pose", 10, Robot_Pose_Callback);
-    // goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, Goal_Pose_Callback);
+    goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, Goal_Pose_Callback);
     map_sub = node.subscribe("map", 1, Map_Callback);
 
     // Set the publish rate here
@@ -991,13 +994,13 @@ int main(int argc, char **argv)
             
                 A_star_algorithm();
                 // Save path to .txt
-                counter++;
+                // counter++;
                 program_state = Tracking_state;
 
                 /*  Initial angle control*/
                 // should_break = false;
                 // robot_state = MOVING;
-                Initial_Control(robot_x, robot_y, deg2rad(Good_angles[counter-1]) );
+                // Initial_Control(robot_x, robot_y, deg2rad(Good_angles[counter-1]) );
                 // ROS_INFO("Done Turning to %d",Good_angles[counter-1] );
 
                 should_break = false; // For tracking state.
@@ -1009,7 +1012,7 @@ int main(int argc, char **argv)
                 // for(int i=6; i<Path.size(); i+=6){
                 for(int i=4; i<Path.size(); i+=4){
                 // for(int i=0; i<Path.size(); i++){
-                    
+                    i = (i+4 >= Path.size()-1)? Path.size()-1:i;
                     goal_x = (float)Path[i].x/10  ; // Convert to meter unit
                     goal_y = (float)Path[i].y/10  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
                     goal_theta = 0; // TODO: Don't know orientation! XD
@@ -1019,23 +1022,23 @@ int main(int argc, char **argv)
                     should_break = false; // reset flag
                     robot_state = MOVING; // reset Robot_state
                 }
-                ROS_INFO("Reach Goal: (%d,%d)",goals[counter-1][0],goals[counter-1][1]);
+                ROS_INFO("Reach Goal: (%f,%f)", goal_x, goal_y);
                 // After reached this point.      
-                if(counter< NUM_OF_GOALS){
-                    program_state = A_star_planning;
-                }
-                else{
-                    program_state = Finished;
-                    ROS_INFO("Finish lab3! ^_^ !");
-                }
+                // if(counter< NUM_OF_GOALS){
+                //     program_state = A_star_planning;
+                // }
+                // else{
+                program_state = Finished;
+                //     ROS_INFO("Finish lab3! ^_^ !");
+                // }
             break;
             case Finished:
 
                 // free(env_map);
             #ifdef DEBUG_PROGRAM
-                        ROS_INFO("Program ended.");
+                        // ROS_INFO("Program in IDLE state.");
             #endif
-                return 0;
+                // return 0;
             break;
             }
         }

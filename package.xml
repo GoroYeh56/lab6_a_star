@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>lab3_A_star</name>
+  <name>lab6_a_star</name>
   <version>0.0.0</version>
-  <description>The lab3_A_star package</description>
+  <description>The lab6_a_star package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->

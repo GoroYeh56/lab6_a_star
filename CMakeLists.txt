@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(lab3_A_star)
+project(lab6_a_star)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -137,7 +137,7 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/lab3_A_star_node.cpp)
 
-add_executable(a_star_tracking_node src/a_star_tracking.cpp)
+add_executable(lab6_a_star src/lab6_a_star.cpp)
 
 
 ## Rename C++ executable without prefix
@@ -154,7 +154,7 @@ add_executable(a_star_tracking_node src/a_star_tracking.cpp)
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(a_star_tracking_node
+target_link_libraries(lab6_a_star
   ${catkin_LIBRARIES}
 )
 
