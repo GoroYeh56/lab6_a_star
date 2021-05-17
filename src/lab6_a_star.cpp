@@ -277,21 +277,7 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
                 path_map[i] = '-'; // -1
         }
 
-            // for (int i = 0; i < WIDTH; i++)
-            // {
-            //     for (int j = 0; j < HEIGHT; j++)
-            //     {
-            //         env_map[i + j*WIDTH] = msg->data[i + j*WIDTH];
-            //         if(env_map[i+j*WIDTH] == 100){
-            //             path_map[i+j*WIDTH] = '#';                    
-            //         }
-            //         else if(env_map[i+j*WIDTH] == 0)
-            //             path_map[i+j*WIDTH] = ' ';
-            //         else
-            //             path_map[i+j*WIDTH] = '-'; // -1
-            //     } 
-            // }
-         
+
         // First Step: Expand (Note: use 50, otherwise, the world block since we use a for-loop!)
         for (int i = 0; i < HEIGHT * WIDTH; i++)
         {
@@ -676,7 +662,8 @@ void A_star_algorithm()
             if(neighbor.id >= 10000 || neighbor.id <0){
                 ROS_INFO("Sementation Fault! Index out of range.");
             }
-            if(env_map[neighbor.id] == 100 || env_map[neighbor.id]==-1){
+            // if(env_map[neighbor.id] == 100 || env_map[neighbor.id]==-1){
+            if(env_map[neighbor.id] == 100 ){
                 // NOT walkable. 
                 #ifdef DEBUG_OBSTACLE
                 ROS_INFO("Cannot walk this way since it's occupied! Index: %d",index);
