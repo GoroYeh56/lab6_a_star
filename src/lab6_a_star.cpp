@@ -207,6 +207,11 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 
     goal_theta = atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qz * qz + qy * qy));
 
+	if(goal_x<0&&goal_theta>0)
+	{
+		goal_theta = -1*goal_theta;
+	}
+
     // goal_theta = thetaConstraint(goal_theta);
 
 }
