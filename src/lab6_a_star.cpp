@@ -97,6 +97,7 @@ void Robot_Pose_Callback(const geometry_msgs::Twist::ConstPtr &msg)
     robot_y = msg->linear.y;
     robot_theta = msg->angular.z;
 
+    // Constrain robot_theta to [-pi, pi]
     if (robot_theta > pi)
     {
         while (robot_theta > pi)
@@ -194,9 +195,10 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     // Once receive a command, change state!
     program_state = A_star_planning;
     robot_state = MOVING;
+
     float qx, qy, qz, qw;
-    goal_x = (msg->pose.position.x)*10;
-    goal_y = (msg->pose.position.y)*10; // one grid = 10cm
+    goal_x = (msg->pose.position.x)*(100/20); // (100/20) : CovertFactor.
+    goal_y = (msg->pose.position.y)*(100/20); // one grid = 10cm
 
     qx = msg->pose.orientation.x;
     qy = msg->pose.orientation.y;
@@ -204,10 +206,16 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
     qw = msg->pose.orientation.w;
 
     goal_theta = atan2(2 * (qw * qz + qx * qy), 1 - 2 * (qz * qz + qy * qy));
+
+    // goal_theta = thetaConstraint(goal_theta);
+
 }
 
-#define WIDTH 100
-#define HEIGHT 100
+// #define WIDTH 100
+// #define HEIGHT 100
+
+#define WIDTH 640
+#define HEIGHT 608
 #define NUM_NEIGHBORS 8
 
 
@@ -255,10 +263,10 @@ string Pathname;
 string Envname;
 
 bool read_map = false;
-int env_map[10000];
+int env_map[640*608];
 
 // For visualization
-char path_map[10000];
+char path_map[640*608];
 
 // Note: this ONLY run ONE TIME !
 void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
@@ -287,7 +295,7 @@ void Map_Callback(const nav_msgs::OccupancyGrid::ConstPtr &msg)
                     int x = i%WIDTH;
                     int y = i/WIDTH;
 
-                    cout<<"expand index: "<<i<<", x: "<<x<<", y: "<<y<<" \n";
+                    // cout<<"expand index: "<<i<<", x: "<<x<<", y: "<<y<<" \n";
                     if(x==0 || x==99 || y==0 || y==99)
                         continue;   // Don't expand the boundary since we might threaten the goal location!
                     
@@ -442,10 +450,15 @@ const float max_w = 1;   // rad/s
 // const float max_w = 2*max_v/wheel_separaton;
 
 /* -------- Gain ---------- */
-const float Krho = 1;   // 2
-const float Ka = 5;     // 8
-const float Kb = -1;    // -1.5
+// const float Krho = 1;   // 2
+// const float Ka = 5;     // 8
+// const float Kb = -1;    // -1.5
 const float Kp = 0.5;
+
+
+const float Krho = 0.5;   // 2
+const float Ka = 2.5;     // 8
+const float Kb = -1.12 ;    // -1.5
 
 
 int counter = 0; // indicate "which goal" we are planning
@@ -470,25 +483,39 @@ int counter = 0; // indicate "which goal" we are planning
 */
 
 
+/*
+    Lab6 Map:
+    Map[0][0] => (-10, -21.2)m
+    Each grid: data[640 * 608] => 5cm
+    Augmented the unit: make robot_x => *100/20 (unit: 5cm)
+*/
+
+
+
 int Convert_Unit(float num){
-    return (int)num*100/10;
+    // return (int)num*100/10;
+    return (int)num*100/20;
 }
 
+// Note: Now the map start from 
 int ID_to_X(int id){
-    return id%WIDTH - 50;
+    // return id%WIDTH - 50;
+    return id%WIDTH - 10*(100/20);
 }
 
 int ID_to_Y(int id){
-    return id/WIDTH -50;
+    // return id/WIDTH -50;
+    return id/WIDTH- 21.2*(100/20);
 }
 
 class location{
 public:
     location();     // default constructor.
-    location(int x, int y){
+    location(int x, int y){ // Note: x,y should be 5cm unit!
         this->x = x;
         this->y = y;
-        this->id = (x+50) + (y+50)*WIDTH;   // Since origin: (-50,-50) in 10cm unit
+        this->id = (x+ (10*(100)/20 )) + (y+ (21.2*100/20) )*WIDTH; 
+        // this->id = (x+50) + (y+50)*WIDTH;   // Since origin: (-50,-50) in 10cm unit
         this->f = this->g = 0; // initialize
     }
     int id; // from its x,y
@@ -524,12 +551,241 @@ void Append_Path(int node_id){
 }
 
 
-int Parent[10000];
-float f_cost[10000];
-float g_cost[10000];
+// int Parent[10000];
+// float f_cost[10000];
+// float g_cost[10000];
+int Parent[640*608];
+float f_cost[640*608];
+float g_cost[640*608];
+
+
+float v, w;
+geometry_msgs::Twist twist;
+
+bool should_break = false;
+
+
+///// LEE /////
+#define PI 3.14159265358979323846
+float x_r=0;
+float y_r=0;
+float theta_r=0;
+// float x,y,theta;
+float rpho;
+float delta_x,delta_y,delta_theta;
+
+
+float thetaConstraint(float thi)
+{
+	while(abs(thi)>PI)
+	{
+		thi = (thi > 0) ?  thi - 2*PI : thi + 2*PI;
+	}
+	thi = (thi == -1*PI) ? -1*thi : thi;
+	return thi;
+}
+
+
+///////////////
+
+void Tracking()
+{
+    // stuck in here!
+    while(!should_break){
+
+            error_x = goal_x - robot_x;
+            error_y = goal_y - robot_y;
+            error_theta = goal_theta - robot_theta;
+
+        #ifdef DEBUG_LAB2
+            // ROS_INFO("Robot-State: %d, Goal theta: %.2f, Robot Theta: %.2f", robot_state, goal_theta, robot_theta);
+            ROS_INFO("Error: %.3f %.3f %.3f", error_x, error_y, error_theta);
+        #endif
+
+            switch (robot_state)
+            {
+            case MOVING:
+                ////////// Main Control Loop! /////////////
+                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
+                // {
+                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                if (abs(error_x) < 0.1 && abs(error_y) < 0.1)
+                {
+                    robot_state = IDLE;
+                }
+                // else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                // {
+                //     robot_state = TURNING;
+                // }
+                else
+                {
+                    /* ----- For Consistency ----- */
+                    delta_x = error_x;
+                    delta_y = error_y;
+                    delta_theta = -error_theta;
+                    theta_r = goal_theta;
+
+                    // cout<<"Moving now!!\n";
+                    rpho = sqrt(pow(delta_x,2) + pow(delta_y,2));
+                    alpha = atan2(delta_y,delta_x) - theta_r - delta_theta;
+                    alpha = thetaConstraint(alpha);
+                    
+                    beta = -1*(alpha + delta_theta);
+                    beta = thetaConstraint(beta);
+                    
+                    v = Krho*rpho;
+                    w = Ka*alpha + Kb*beta;
+
+                    /* --- Control Law --- */
+                    // v = Krho * rho;
+                    // w = Ka * alpha + Kb * beta;
+                    // ROS_INFO("Robot is MOVING !!!");
+                }
+                break;
+            case TURNING:
+
+                if (abs(error_theta) < 0.1 || abs(robot_theta + 2 * pi) < 0.1 || abs(error_theta - 2 * pi) < 0.1)
+                {
+                    robot_state = IDLE;
+                }
+                else
+                {
+                    /* --- Control Law --- */
+                    v = 0;
+                    w = Kp * error_theta;
+                }
+
+                break;
+            case IDLE:
+                // Stop and listen to new goal.
+                // reset error signals.
+                v = 0;
+                w = 0;
+                // ROS_INFO("Robot IDLE and break!");
+                should_break = true; // break while-loop and return to the main function!
+        #ifdef DEBUG_LAB2
+                ROS_INFO("Robot reached the goal and is now IDLE.");
+        #endif
+
+                break;
+            }
+
+            /* Command Inputs Constraints */
+            v = (v>max_v)? max_v : v;
+            v = (v<-max_v)?-max_v: v;
+            w = (w>max_w)? max_w : w;
+            w = (w<-max_w)?-max_w: w;
+
+            // Publish cmd_vel
+            twist.linear.x = v;
+            twist.linear.y = 0;
+            twist.linear.z = 0;
+            twist.angular.x = 0;
+            twist.angular.y = 0;
+            twist.angular.z = w;
+            cmd_vel_pub.publish(twist);
+
+            ros::spinOnce();
+            // if(should_break)
+            //     break;
+
+    }
+
+}
+
+
+
+///////////////// LEE Controller /////////////////
+
+
+#define kp 0.5 
+#define ka 2.5 
+#define kB -1.12 
+// float x_r=0;
+// float y_r=0;
+// float theta_r=0;
+float x,y,theta;
+// float rpho;
+bool command = false;
+//-------
+// float delta_x,delta_y,delta_theta;
+bool theta_test = false;
+
+float degreeConverter(float xx,float yy, float zz, float ww)
+{
+	return atan2(2*(ww*zz+xx*yy),1-2*(zz*zz+yy*yy));
+}
+
+
+
+void Tracking_LEE(){
+    while(!should_break){
+
+		delta_x = x_r - x;
+    	delta_y = y_r - y;
+    	delta_theta = theta - theta_r;
+    	cout<<"X_r: "<<x_r<<" Y_r "<<y_r<<" Theta_r: "<<theta_r<<"\n";
+    	cout<<"delta X: "<<delta_x<<" delta Y: "<<delta_y<<" delta Theta: "<<delta_theta<<"\n";
+    	if((abs(delta_theta)<0.3)||(abs(delta_theta+2*PI)<0.3)||(abs(delta_theta-2*PI)<0.3))
+    	{
+    		theta_test = true;
+		}else
+		{
+			theta_test = false;
+		}
+		// if( abs(delta_x)<0.1 && abs(delta_y)<0.1 && (theta_test))
+		// {
+		// 	command = false;//Robot into idle state until new command given
+		// }
+		switch(command)
+		{
+			case false:
+				//ROS_INFO("IDLE now!!");
+				cout<<"IDLE now!!\n";
+				v = 0;
+				w = 0;
+			break;
+			case true:
+				//ROS_INFO("Moving now!!");
+				cout<<"Moving now!!\n";
+				rpho = sqrt(pow(delta_x,2) + pow(delta_y,2));
+				alpha = atan2(delta_y,delta_x) - theta_r - delta_theta;
+				alpha = thetaConstraint(alpha);
+				
+				beta = -1*(alpha + delta_theta);
+				beta = thetaConstraint(beta);
+				
+				v = kp*rpho;
+				w = ka*alpha + kB*beta;
+			break;		
+		}
+		cout<<" V: "<<v<<" W: "<<w<<"\n";
+		//ROS_INFO("V: "+v+" W: "+w); 
+		twist.linear.x = v;
+		twist.linear.y = 0;
+		twist.linear.z = 0;
+		twist.angular.x = 0;
+		twist.angular.y = 0;
+		twist.angular.z = w;
+		cmd_vel_pub.publish(twist);
+		ros::spinOnce();
+	}
+
+}
+// #define LEE_CONTROL
 
 void A_star_algorithm()
 {
+
+    #ifdef LEE_CONTROL
+    robot_x = x;
+    robot_y = y;
+    goal_x = x_r;
+    goal_y = y_r;
+    robot_theta = theta;
+    goal_theta = theta_r;
+    #endif
+
     // A star planning from robot_pose to goals[counter].
     // robot_pose: use robot_x, robot_y.
     // goals[counter][0], goals[counter][1]
@@ -651,16 +907,20 @@ void A_star_algorithm()
             }
             
             // Out of boundaries
-            if(neighbor_x < -50 || neighbor_y < -50 || neighbor_x >= 50 || neighbor_y >= 50){
+            // if(neighbor_x < -50 || neighbor_y < -50 || neighbor_x >= 50 || neighbor_y >= 50){
+            //     continue;
+            // }
+            if(neighbor_x < -10*(100/20) || neighbor_y < -21.2*(100/20) || neighbor_x >= 640*0.05*(100/20)-10*(100/20) || neighbor_y >= 608*0.05*(100/20)-21.2*(100/20) ){
                 continue;
             }
+
 
             location neighbor(neighbor_x, neighbor_y);
             // ROS_INFO("Visit (%d,%d)'s neighbor: (%d,%d).",cur_x, cur_y, neighbor_x, neighbor_y);
             // cout<<"env_map: "<<env_map[neighbor.id]<<endl;
 
-            if(neighbor.id >= 10000 || neighbor.id <0){
-                ROS_INFO("Sementation Fault! Index out of range.");
+            if(neighbor.id >= WIDTH*HEIGHT || neighbor.id <0){
+                ROS_INFO("Segmentation Fault! Index out of range.");
             }
             // if(env_map[neighbor.id] == 100 || env_map[neighbor.id]==-1){
             if(env_map[neighbor.id] == 100 ){
@@ -753,99 +1013,41 @@ void A_star_algorithm()
     
 }
 
-float v, w;
-geometry_msgs::Twist twist;
 
-bool should_break = false;
-
-void Tracking()
+//Robot command goes here.
+void cmdCallback(const geometry_msgs::PoseStamped::ConstPtr& cmd)
 {
-    // stuck in here!
-    while(!should_break){
-
-            error_x = goal_x - robot_x;
-            error_y = goal_y - robot_y;
-            error_theta = goal_theta - robot_theta;
-
-        #ifdef DEBUG_LAB2
-            // ROS_INFO("Robot-State: %d, Goal theta: %.2f, Robot Theta: %.2f", robot_state, goal_theta, robot_theta);
-            ROS_INFO("Error: %.3f %.3f %.3f", error_x, error_y, error_theta);
-        #endif
-
-            switch (robot_state)
-            {
-            case MOVING:
-                ////////// Main Control Loop! /////////////
-                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
-                // {
-                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                if (abs(error_x) < 0.1 && abs(error_y) < 0.1)
-                {
-                    robot_state = IDLE;
-                }
-                // else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                // {
-                //     robot_state = TURNING;
-                // }
-                else
-                {
-                    /* --- Control Law --- */
-                    v = Krho * rho;
-                    w = Ka * alpha + Kb * beta;
-                    // ROS_INFO("Robot is MOVING !!!");
-                }
-                break;
-            case TURNING:
-
-                if (abs(error_theta) < 0.1 || abs(robot_theta + 2 * pi) < 0.1 || abs(error_theta - 2 * pi) < 0.1)
-                {
-                    robot_state = IDLE;
-                }
-                else
-                {
-                    /* --- Control Law --- */
-                    v = 0;
-                    w = Kp * error_theta;
-                }
-
-                break;
-            case IDLE:
-                // Stop and listen to new goal.
-                // reset error signals.
-                v = 0;
-                w = 0;
-                // ROS_INFO("Robot IDLE and break!");
-                should_break = true; // break while-loop and return to the main function!
-        #ifdef DEBUG_LAB2
-                ROS_INFO("Robot reached the goal and is now IDLE.");
-        #endif
-
-                break;
-            }
-
-            /* Command Inputs Constraints */
-            v = (v>max_v)? max_v : v;
-            v = (v<-max_v)?-max_v: v;
-            w = (w>max_w)? max_w : w;
-            w = (w<-max_w)?-max_w: w;
-
-            // Publish cmd_vel
-            twist.linear.x = v;
-            twist.linear.y = 0;
-            twist.linear.z = 0;
-            twist.angular.x = 0;
-            twist.angular.y = 0;
-            twist.angular.z = w;
-            cmd_vel_pub.publish(twist);
-
-            ros::spinOnce();
-            // if(should_break)
-            //     break;
-
-    }
-
+    program_state = A_star_planning;
+	command = true;
+	x_r = (cmd->pose.position.x)*(100/20);
+	y_r = (cmd->pose.position.y)*(100/20);
+	
+	float xx_r = cmd->pose.orientation.x;
+	float yy_r = cmd->pose.orientation.y;
+	float zz_r = cmd->pose.orientation.z;
+	float ww_r = cmd->pose.orientation.w;
+	theta_r = degreeConverter(xx_r,yy_r,zz_r,ww_r);
+	theta_r = thetaConstraint(theta_r);
+	if(x_r<0&&theta_r>0)
+	{
+		theta_r = -1*theta_r;
+	}
+	//----------------------------------
+	
 }
 
+//Here we take the pose of the robot
+void poseCallback(const geometry_msgs::Twist::ConstPtr& pose)
+{
+	x = pose->linear.x;
+    y = pose->linear.y;
+    theta = pose->angular.z;
+	theta = thetaConstraint(theta);
+}
+
+
+
+//////////////////////////////////////////
 
 float deg2rad( float degree){
     return degree*pi/180;
@@ -953,8 +1155,13 @@ int main(int argc, char **argv)
     ros::NodeHandle node;
 
     cmd_vel_pub = node.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+    #ifndef LEE_CONTROL
     robot_pose_sub = node.subscribe("/robot_pose", 10, Robot_Pose_Callback);
     goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, Goal_Pose_Callback);
+    #else
+    robot_pose_sub = node.subscribe("/robot_pose", 10, poseCallback);
+    goal_pose_sub = node.subscribe("/move_base_simple/goal", 10, cmdCallback);
+    #endif
     map_sub = node.subscribe("map", 1, Map_Callback);
 
     // Set the publish rate here
@@ -981,7 +1188,7 @@ int main(int argc, char **argv)
             
                 A_star_algorithm();
                 // Save path to .txt
-                // counter++;
+                counter++;
                 program_state = Tracking_state;
 
                 /*  Initial angle control*/
@@ -1000,12 +1207,19 @@ int main(int argc, char **argv)
                 for(int i=4; i<Path.size(); i+=4){
                 // for(int i=0; i<Path.size(); i++){
                     i = (i+4 >= Path.size()-1)? Path.size()-1:i;
-                    goal_x = (float)Path[i].x/10  ; // Convert to meter unit
-                    goal_y = (float)Path[i].y/10  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
+                    // goal_x = (float)Path[i].x/10  ; // Convert to meter unit
+                    // goal_y = (float)Path[i].y/10  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
+                    goal_x = (float)Path[i].x*20/100  ; // Convert to meter unit
+                    goal_y = (float)Path[i].y*20/100  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
                     goal_theta = 0; // TODO: Don't know orientation! XD
                     ROS_INFO("Loc: (%f,%f)", goal_x, goal_y);
                     
+                    #ifndef LEE_CONTROL
                     Tracking();
+                    #else
+                    Tracking_LEE();
+                    command = true;
+                    #endif
                     should_break = false; // reset flag
                     robot_state = MOVING; // reset Robot_state
                 }
