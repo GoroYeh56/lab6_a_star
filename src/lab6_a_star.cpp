@@ -448,8 +448,8 @@ const float wheel_separaton = 0.24; //cm
 
 const float Max_Wheel_Speed = 2 * pi;
 
-const float max_v = 0.5; // m/s
-const float max_w = 1;   // rad/s
+const float max_v = 0.4; // m/s
+const float max_w = 0.4;   // rad/s
 
 // const float max_v = 2*wheel_r*Max_Wheel_Speed;
 // const float max_w = 2*max_v/wheel_separaton;
@@ -614,7 +614,7 @@ void Tracking()
                 // if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
                 // {
                 // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                if (abs(error_x) < 0.1 && abs(error_y) < 0.1)
+                if (abs(error_x) < 0.3 && abs(error_y) < 0.3)
                 {
                     robot_state = IDLE;
                 }
