@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: lab6_a_star
+Description: Description of lab6_a_star
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

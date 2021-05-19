@@ -190,6 +190,7 @@ void Robot_Pose_Callback(const geometry_msgs::Twist::ConstPtr &msg)
     // beta = delta_theta - alpha;
 }
 
+float Final_goal_theta = 0;
 void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
     // Once receive a command, change state!
@@ -211,7 +212,7 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 	{
 		goal_theta = -1*goal_theta;
 	}
-
+    Final_goal_theta = goal_theta;
     // goal_theta = thetaConstraint(goal_theta);
 
 }
@@ -458,7 +459,7 @@ const float max_w = 0.4;   // rad/s
 // const float Krho = 1;   // 2
 // const float Ka = 5;     // 8
 // const float Kb = -1;    // -1.5
-const float Kp = 0.5;
+const float Kp = 0.3; // 0.5
 
 
 const float Krho = 0.5;   // 2
@@ -611,17 +612,17 @@ void Tracking()
             {
             case MOVING:
                 ////////// Main Control Loop! /////////////
-                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01 && abs(error_theta) < 0.1)
-                // {
-                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                if (abs(error_x) < 0.3 && abs(error_y) < 0.3)
+                if (abs(error_x) < 0.2 && abs(error_y) < 0.2 && abs(error_theta) < 0.2)
                 {
+                // if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
+                // if (abs(error_x) < 0.3 && abs(error_y) < 0.3)
+                // {
                     robot_state = IDLE;
                 }
-                // else if (abs(error_x) < 0.01 && abs(error_y) < 0.01)
-                // {
-                //     robot_state = TURNING;
-                // }
+                else if (abs(error_x) < 0.2 && abs(error_y) < 0.2)
+                {
+                    robot_state = TURNING;
+                }
                 else
                 {
                     /* ----- For Consistency ----- */
@@ -649,7 +650,7 @@ void Tracking()
                 break;
             case TURNING:
 
-                if (abs(error_theta) < 0.1 || abs(robot_theta + 2 * pi) < 0.1 || abs(error_theta - 2 * pi) < 0.1)
+                if (abs(error_theta) < 0.2 || abs(robot_theta + 2 * pi) < 0.2 || abs(error_theta - 2 * pi) < 0.2)
                 {
                     robot_state = IDLE;
                 }
@@ -1216,7 +1217,14 @@ int main(int argc, char **argv)
                     // goal_y = (float)Path[i].y/10  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
                     goal_x = (float)Path[i].x*20/100  ; // Convert to meter unit
                     goal_y = (float)Path[i].y*20/100  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
-                    goal_theta = 0; // TODO: Don't know orientation! XD
+                    // goal_theta = 0; // TODO: Don't know orientation! XD
+                    if(i==Path.size()-1){
+                        goal_theta = Final_goal_theta;
+                    }
+                    else{
+                        goal_theta = atan2(error_y,error_x);
+                    }
+                    
                     ROS_INFO("Loc: (%f,%f)", goal_x, goal_y);
                     
                     #ifndef LEE_CONTROL

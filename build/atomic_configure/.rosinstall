@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/goro/catkin_ws/src/lab6_a_star/build/devel/setup.sh
