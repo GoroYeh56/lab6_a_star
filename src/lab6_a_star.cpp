@@ -263,7 +263,7 @@ void Goal_Pose_Callback(const geometry_msgs::PoseStamped::ConstPtr &msg)
 
 
 // const int EXPAND_NUMBER = 2;
-#define EXPAND_NUMBER 3// Expand to 4 grids. 40cm
+#define EXPAND_NUMBER 4// Expand to 4 grids. 40cm
 #define EXPAND_DIAGONAL
 string Pathname;
 string Envname;
@@ -449,8 +449,8 @@ const float wheel_separaton = 0.24; //cm
 
 const float Max_Wheel_Speed = 2 * pi;
 
-const float max_v = 0.4; // m/s
-const float max_w = 0.4;   // rad/s
+const float max_v = 0.3; // m/s
+const float max_w = 0.3;   // rad/s
 
 // const float max_v = 2*wheel_r*Max_Wheel_Speed;
 // const float max_w = 2*max_v/wheel_separaton;
@@ -1153,7 +1153,7 @@ int Good_angles[5] ={
     90,
     90
 };
-
+int step = 5;
 int main(int argc, char **argv)
 {
     // Initialize the node here
@@ -1208,11 +1208,12 @@ int main(int argc, char **argv)
                 
             break;
             case Tracking_state:
+		
                 // Now, pass Path (element.x, element.y) to A series of Control Problem!
                 // for(int i=6; i<Path.size(); i+=6){
-                for(int i=4; i<Path.size(); i+=4){
+                for(int i=step; i<Path.size(); i+=step){
                 // for(int i=0; i<Path.size(); i++){
-                    i = (i+4 >= Path.size()-1)? Path.size()-1:i;
+                    i = (i+step >= Path.size()-1)? Path.size()-1:i;
                     // goal_x = (float)Path[i].x/10  ; // Convert to meter unit
                     // goal_y = (float)Path[i].y/10  ; // Since we use (10cm) in Path.x,.y. Convert to "m" !
                     goal_x = (float)Path[i].x*20/100  ; // Convert to meter unit
